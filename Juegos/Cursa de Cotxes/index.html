@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cursa de Cotxes - Versió Millorada</title>
+<style>
+  :root{
+    --bg:#0b0f14; --road:#2b2f36; --accent:#0a84ff; --ui:#e6eefc;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,Arial;color:var(--ui)}
+  .wrap{display:flex;align-items:center;justify-content:center;height:100vh}
+  #ui{position:fixed;left:14px;top:12px;z-index:40}
+  #ui button{margin-left:8px;padding:6px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer}
+  canvas{border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.6);max-width:98vw;height:auto;display:block}
+  .hint{position:fixed;right:14px;top:12px;color:#cbd5e1;font-size:13px;z-index:40}
+  /* botones táctiles */
+  .touch-controls{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:45}
+  .touch-btn{width:72px;height:72px;border-radius:12px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;user-select:none}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:50;pointer-events:none}
+  .panel{pointer-events:auto;background:rgba(0,0,0,0.6);padding:18px;border-radius:12px;text-align:center}
+  .panel button{margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="ui">
+    <strong>Puntuació:</strong> <span id="score">0</span>
+    <strong style="margin-left:12px">Vides:</strong> <span id="lives">3</span>
+    <button id="pauseBtn">Pausa</button>
+    <button id="restartBtn">Reiniciar</button>
+  </div>
+  <div class="hint">Flechas ← → o botones táctiles</div>
+  <canvas id="game" width="720" height="1000"></canvas>
+
+  <div class="touch-controls" id="touchControls" style="display:none">
+    <div class="touch-btn" id="btnLeft">◀</div>
+    <div class="touch-btn" id="btnRight">▶</div>
+  </div>
+
+  <div class="overlay" id="overlay" style="display:none">
+    <div class="panel" id="panel">
+      <h2 id="panelTitle">Game Over</h2>
+      <p id="panelText">Puntuación: 0</p>
+      <button id="panelRestart">Reiniciar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== Setup ====== */
+const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score'), livesEl = document.getElementById('lives');
+const pauseBtn = document.getElementById('pauseBtn'), restartBtn = document.getElementById('restartBtn');
+const overlay = document.getElementById('overlay'), panelTitle = document.getElementById('panelTitle'), panelText = document.getElementById('panelText'), panelRestart = document.getElementById('panelRestart');
+const touchControls = document.getElementById('touchControls'), btnLeft = document.getElementById('btnLeft'), btnRight = document.getElementById('btnRight');
+
+const W = canvas.width, H = canvas.height;
+let running = true, paused = false;
+let score = 0, lives = 3, startTime = Date.now();
+let keys = {};
+
+/* Carriles: 3 carriles definidos por fracciones de la carretera */
+const lanes = 3;
+let baseRoadWidth = W * 0.62;
+const roadCenterX = W/2;
+const horizonY = H * 0.12;
+
+/* Jugador */
+const player = {
+  lane: 1, // 0,1,2
+  x: 0, y: H - 180,
+  baseW: 84, baseH: 128,
+  speed: 10,
+  tilt: 0,
+  wheelRotation: 0,
+  targetX: 0
+};
+
+/* Obstáculos */
+const obstacleTypes = [
+  {name:'compact', color:'#d9534f', baseW:64, baseH:48, emoji:'🚙', baseVy:2.2},
+  {name:'taxi', color:'#f0ad4e', baseW:56, baseH:44, emoji:'🚕', baseVy:2.8},
+  {name:'truck', color:'#6c757d', baseW:110, baseH:70, emoji:'🚚', baseVy:1.6},
+  {name:'sport', color:'#8e44ad', baseW:58, baseH:40, emoji:'🏎️', baseVy:3.2},
+  {name:'suv', color:'#2ecc71', baseW:78, baseH:56, emoji:'🚙', baseVy:2.0}
+];
+let obstacles = [];
+let spawnTimer = 0, spawnInterval = 60;
+
+/* Mostrar controles táctiles en pantallas pequeñas */
+function checkTouchControls(){
+  if(window.innerWidth < 700) touchControls.style.display = 'flex';
+  else touchControls.style.display = 'none';
+}
+checkTouchControls();
+window.addEventListener('resize', checkTouchControls);
+
+/* ====== Utilidades de perspectiva ====== */
+function depthScale(y){
+  const t = Math.max(0, Math.min(1, (y - horizonY) / (H - horizonY)));
+  return 0.35 + t * 0.65;
+}
+function roadWidthAt(y){
+  const topW = baseRoadWidth * 0.18;
+  const bottomW = baseRoadWidth;
+  const t = Math.max(0, Math.min(1, (y - horizonY) / (H - horizonY)));
+  return topW + (bottomW - topW) * t;
+}
+/* Obtener X de carril en una Y dada */
+function laneXAt(laneIndex, y, carWidth){
+  const roadW = roadWidthAt(y);
+  const left = roadCenterX - roadW/2 + 12;
+  const laneW = (roadW - 24) / lanes;
+  const x = left + laneIndex * laneW + (laneW - carWidth)/2;
+  return x;
+}
+
+/* ====== Spawn desde el horizonte (punto de fuga) alineado a carriles ====== */
+function spawnObstacle(){
+  const type = obstacleTypes[Math.floor(Math.random()*obstacleTypes.length)];
+  // spawn en horizonte (ligeramente alejado para variar)
+  const y = horizonY - (Math.random()*6 + 1);
+  // elegir carril aleatorio
+  const laneIndex = Math.floor(Math.random()*lanes);
+  const s = depthScale(y + type.baseH/2);
+  const w = type.baseW * s;
+  const x = laneXAt(laneIndex, y, w);
+  // velocidad base y ligera deriva lateral (drift) que aumenta con la escala
+  const vy = type.baseVy + Math.random()*1.6;
+  const drift = (Math.random()-0.5) * 0.6; // -0.3..0.3
+  obstacles.push({type, x, y, vy, laneIndex, drift});
+}
+
+/* ====== Controles ====== */
+document.addEventListener('keydown', e=>{
+  if(e.key==='ArrowLeft' || e.key==='ArrowRight') e.preventDefault();
+  keys[e.key] = true;
+});
+document.addEventListener('keyup', e=> delete keys[e.key]);
+
+btnLeft.addEventListener('touchstart', ()=> keys['touchLeft']=true);
+btnLeft.addEventListener('touchend', ()=> delete keys['touchLeft']);
+btnRight.addEventListener('touchstart', ()=> keys['touchRight']=true);
+btnRight.addEventListener('touchend', ()=> delete keys['touchRight']);
+
+pauseBtn.onclick = ()=> { paused = !paused; pauseBtn.textContent = paused ? 'Continuar' : 'Pausa'; if(!paused) loop(); };
+restartBtn.onclick = resetGame;
+panelRestart.onclick = resetGame;
+
+/* ====== Lógica de actualización ====== */
+function update(){
+  if(!running || paused) return;
+
+  // controles: cambiar carril suavemente
+  if(keys['ArrowLeft'] || keys['touchLeft']){
+    player.lane = Math.max(0, player.lane - 1);
+    keys['ArrowLeft'] = false; keys['touchLeft'] = false;
+  }
+  if(keys['ArrowRight'] || keys['touchRight']){
+    player.lane = Math.min(lanes-1, player.lane + 1);
+    keys['ArrowRight'] = false; keys['touchRight'] = false;
+  }
+
+  // targetX según carril (en la parte inferior)
+  player.targetX = laneXAt(player.lane, player.y, player.baseW);
+  // suavizado de posición (interpolación)
+  player.x += (player.targetX - player.x) * 0.22;
+  // tilt y ruedas
+  const dx = player.targetX - player.x;
+  player.tilt = dx * 0.02;
+  player.wheelRotation += Math.sign(dx) * 0.18;
+  player.wheelRotation *= 0.92;
+
+  // spawn
+  spawnTimer++;
+  if(spawnTimer > spawnInterval){
+    spawnTimer = 0;
+    spawnObstacle();
+    if(spawnInterval > 28) spawnInterval -= 0.35;
+  }
+
+  // dificultad con el tiempo
+  const elapsed = (Date.now() - startTime) / 1000;
+  const gameSpeed = 1.2 + elapsed * 0.045;
+
+  // actualizar obstáculos: se desplazan hacia abajo y pueden derivar lateralmente
+  for(let i = obstacles.length - 1; i >= 0; i--){
+    const o = obstacles[i];
+    const s = depthScale(o.y + o.type.baseH/2);
+    // drift lateral que se amplifica al acercarse
+    const lateral = o.drift * (1 + (1 - s) * -1.2) * (0.6 + s*0.8);
+    o.x += lateral;
+    o.y += (o.vy + gameSpeed) * (0.9 + s * 0.9);
+
+    // si sale de pantalla, eliminar y sumar puntos
+    if(o.y > H + 120){
+      obstacles.splice(i,1);
+      score += 10;
+      scoreEl.textContent = score;
+    } else {
+      // colisión: cajas escaladas por profundidad
+      const sO = depthScale(o.y + o.type.baseH/2);
+      const oW = o.type.baseW * sO, oH = o.type.baseH * sO;
+      const oX = o.x, oY = o.y;
+      const pS = depthScale(player.y + player.baseH/2);
+      const pW = player.baseW * pS, pH = player.baseH * pS;
+      const pX = player.x, pY = player.y;
+      // AABB collision con margen pequeño para evitar colisiones injustas
+      const margin = Math.max(4, 6 * sO);
+      if(!(pX + pW - margin < oX || pX + margin > oX + oW || pY + pH - margin < oY || pY + margin > oY + oH)){
+        // impacto: restar vida y efecto
+        handleCollision(i);
+      }
+    }
+  }
+}
+
+/* Manejar colisión: restar vida, efecto y continuar si quedan vidas */
+function handleCollision(obstacleIndex){
+  // eliminar obstáculo
+  obstacles.splice(obstacleIndex,1);
+  lives--;
+  livesEl.textContent = lives;
+  // efecto visual breve: flash
+  flashScreen();
+  if(lives <= 0){
+    running = false;
+    showPanel('Game Over', `Puntuación: ${score}`);
+  } else {
+    // invulnerabilidad breve (no implementada física, solo pausa corta)
+    paused = true;
+    setTimeout(()=> paused = false, 700);
+  }
+}
+
+/* Flash visual */
+function flashScreen(){
+  const prev = canvas.style.filter || '';
+  canvas.style.filter = 'brightness(1.6)';
+  setTimeout(()=> canvas.style.filter = prev, 120);
+}
+
+/* ====== Dibujo ====== */
+function drawRoad(){
+  // fondo
+  ctx.fillStyle = '#0b0f14';
+  ctx.fillRect(0,0,W,H);
+
+  // trapezoide carretera
+  const topW = baseRoadWidth * 0.18;
+  ctx.beginPath();
+  ctx.moveTo(roadCenterX - topW/2, horizonY);
+  ctx.lineTo(roadCenterX + topW/2, horizonY);
+  ctx.lineTo(roadCenterX + baseRoadWidth/2, H);
+  ctx.lineTo(roadCenterX - baseRoadWidth/2, H);
+  ctx.closePath();
+  ctx.fillStyle = '#2b2f36';
+  ctx.fill();
+
+  // carriles (líneas convergentes)
+  ctx.strokeStyle = '#f7f7f7';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([28, 22]);
+  for(let i=1;i<lanes;i++){
+    const t = i / lanes;
+    const xBottom = roadCenterX - baseRoadWidth/2 + t * baseRoadWidth;
+    const xTop = roadCenterX - topW/2 + t * topW;
+    ctx.beginPath();
+    ctx.moveTo(xBottom, H);
+    ctx.lineTo(xTop, horizonY);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // textura lateral
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  for(let i=0;i<40;i++){
+    const y = (i / 40) * H;
+    const w = 6 + Math.sin(i*0.6)*3;
+    ctx.fillRect(roadCenterX - baseRoadWidth/2 - 10, y, w, 2);
+    ctx.fillRect(roadCenterX + baseRoadWidth/2 + 4, y, w, 2);
+  }
+}
+
+/* Efecto líneas de velocidad (motion lines) */
+function drawSpeedLines(){
+  const elapsed = (Date.now() - startTime) / 1000;
+  const speedFactor = 1 + elapsed * 0.02;
+  const lines = Math.min(40, Math.floor(6 + speedFactor*6));
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  for(let i=0;i<lines;i++){
+    const t = i / lines;
+    const y = t * H;
+    const len = 20 + Math.random()*80;
+    ctx.beginPath();
+    ctx.moveTo(roadCenterX - 6, y);
+    ctx.lineTo(roadCenterX - 6 - len, y + 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(roadCenterX + 6, y);
+    ctx.lineTo(roadCenterX + 6 + len, y + 6);
+    ctx.stroke();
+  }
+}
+
+/* Dibujar jugador con ruedas y suspensión */
+function drawPlayer(){
+  const s = depthScale(player.y + player.baseH/2);
+  const w = player.baseW * s, h = player.baseH * s;
+  const x = player.x, y = player.y;
+
+  // sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(x + w/2, y + h + 8*s, w*1.05, 18*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // carrocería
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, '#6fd3ff');
+  grad.addColorStop(1, '#0a6fb8');
+  ctx.save();
+  ctx.translate(x + w/2, y + h/2);
+  ctx.rotate(player.tilt * 0.12);
+  ctx.translate(-(x + w/2), -(y + h/2));
+  roundRect(ctx, x, y, w, h, Math.max(10*s,6));
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // ventana
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  roundRect(ctx, x + w*0.18, y + h*0.18, w*0.64, h*0.36, Math.max(4*s,3));
+  ctx.fill();
+
+  // faros
+  ctx.fillStyle = '#fff7b2';
+  ctx.fillRect(x + w*0.06, y + h*0.72, w*0.16, h*0.08);
+  ctx.fillRect(x + w*0.78, y + h*0.72, w*0.16, h*0.08);
+  ctx.restore();
+
+  // ruedas (delanteras y traseras) con rotación y "suspensión"
+  const wheelR = Math.max(8*s,6);
+  const wheelYFront = y + h*0.78 + Math.sin(player.wheelRotation*0.6)*1.5;
+  const wheelYBack = y + h*0.92;
+  drawWheel(x + w*0.22, wheelYFront, wheelR, player.wheelRotation);
+  drawWheel(x + w*0.78, wheelYFront, wheelR, player.wheelRotation);
+  drawWheel(x + w*0.22, wheelYBack, wheelR*0.9, player.wheelRotation*0.9);
+  drawWheel(x + w*0.78, wheelYBack, wheelR*0.9, player.wheelRotation*0.9);
+}
+
+/* Dibujar obstáculos (ordenados por profundidad) */
+function drawObstacles(){
+  obstacles.forEach(o=>{
+    const s = depthScale(o.y + o.type.baseH/2);
+    const w = o.type.baseW * s, h = o.type.baseH * s;
+    const x = o.x, y = o.y;
+
+    // sombra
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + w/2, y + h + 6*s, w*0.9, 12*s, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    if(s > 0.6){
+      ctx.fillStyle = o.type.color;
+      roundRect(ctx, x, y, w, h, Math.max(6*s,4));
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      roundRect(ctx, x + w*0.18, y + h*0.18, w*0.64, h*0.34, Math.max(3*s,2));
+      ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.ellipse(x + w*0.18, y + h*0.82, Math.max(5*s,4), Math.max(4*s,3), 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(x + w*0.82, y + h*0.82, Math.max(5*s,4), Math.max(4*s,3), 0, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.font = `${Math.max(h, w)}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(o.type.emoji, x + w/2, y + h/2 + 4);
+    }
+  });
+}
+
+/* rueda simple con rayos */
+function drawWheel(cx, cy, r, rot){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r, r*0.8, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#666';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r*0.5, r*0.45, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = Math.max(1, r*0.12);
+  for(let i=0;i<6;i++){
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    const a = (i/6) * Math.PI*2;
+    ctx.lineTo(Math.cos(a)*r*0.5, Math.sin(a)*r*0.45);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* helper rounded rect */
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ====== Bucle principal ====== */
+function loop(){
+  if(!running || paused) return;
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* Dibujo completo */
+function draw(){
+  drawRoad();
+  // speed lines sutiles
+  drawSpeedLines();
+  // dibujar obstáculos por profundidad
+  obstacles.sort((a,b)=> a.y - b.y);
+  drawObstacles();
+  drawPlayer();
+
+  // HUD
+  ctx.fillStyle = '#fff';
+  ctx.font = '16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Puntuación: ${score}`, 14, 26);
+  ctx.fillText(`Vidas: ${lives}`, 14, 48);
+}
+
+/* ====== Colisiones y panel ====== */
+function showPanel(title, text){
+  panelTitle.textContent = title;
+  panelText.textContent = text;
+  overlay.style.display = 'flex';
+  overlay.style.pointerEvents = 'auto';
+}
+function hidePanel(){ overlay.style.display = 'none'; overlay.style.pointerEvents = 'none'; }
+
+/* ====== Reinicio y reset ====== */
+function resetGame(){
+  obstacles = [];
+  spawnTimer = 0; spawnInterval = 60;
+  score = 0; lives = 3; startTime = Date.now();
+  scoreEl.textContent = score; livesEl.textContent = lives;
+  player.lane = 1; player.x = laneXAt(1, player.y, player.baseW);
+  running = true; paused = false;
+  hidePanel();
+  loop();
+}
+
+/* ====== Iniciar ====== */
+player.x = laneXAt(player.lane, player.y, player.baseW);
+scoreEl.textContent = score; livesEl.textContent = lives;
+loop();
+
+/* ====== Exposición de funciones para debugging (opcional) ====== */
+window.__game = { resetGame };
+
+/* ====== Fin script ====== */
+</script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<title>PONG 3 NIVELES - FUERZA IGUALADA</title>
+<style>
+body { margin:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; height:100vh; font-family:monospace; color:#fff; overflow:hidden; }
+h1 { color:#fff; font-size:48px; letter-spacing:4px; margin:10px 0; text-shadow:1px 0 #fff,0 1px #fff,1px 1px #fff; }
+canvas { border:8px solid #fff; border-radius:0; background:#111; image-rendering:pixelated; margin-bottom:10px; }
+button { background:#222; color:#fff; border:2px solid #fff; margin:0 5px; padding:5px 10px; font-family:monospace; cursor:pointer; }
+button:hover { background:#333; }
+#level-buttons { margin-bottom:10px; }
+#controls { font-family:monospace; font-size:12px; text-align:center; margin-top:20px; color:white; line-height:1.8; }
+</style>
+</head>
+<body>
+<h1>PONG</h1>
+<div id="level-buttons">
+    <button onclick="selectLevel(1)">Nivel 1</button>
+    <button onclick="selectLevel(2)">Nivel 2</button>
+    <button onclick="selectLevel(3)">Nivel 3</button>
+</div>
+<canvas id="pong" width="800" height="500"></canvas>
+
+<!-- GUÍA DE CONTROLES -->
+<div id="controls">
+    <p><strong>↑ / ↓</strong> — Moure la raqueta</p>
+    <p><strong>ESPACIO</strong> — Cop fort (habilitat del jugador)</p>
+    <p><strong>1, 2, 3</strong> — Seleccionar nivell</p>
+    <br>
+    <p><strong>Nivell 2:</strong> L’enemic pot alentir la pilota quan s’hi apropa</p>
+    <p><strong>Nivell 3:</strong> L’enemic té un supercop que envia la pilota molt ràpid</p>
+</div>
+
+<script>
+// --- TODO TU SCRIPT EXISTENTE ---
+const canvas = document.getElementById("pong");
+const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+// --- CONFIG ---
+const paddleWidth = 14;
+const paddleHeight = 80;
+const ballRadius = 10;
+const cooldownTime = 8000;
+const shieldTimeMax = 3000;
+
+// --- ESTADO ---
+let level = 1, maxLevel = 3;
+let manualLevelSelect = false;
+let player = { x:10, y:canvas.height/2 - paddleHeight/2, dy:0, shield:0, powerReady:true, powerActive:false, powerTime:0, shieldTime:0 };
+let ai = { x:canvas.width-24, y:canvas.height/2 - paddleHeight/2, dy:3, shield:0, powerReady:true, powerActive:false, powerTime:0, slowBallReady:true, superShots:3 };
+let ball = { x:canvas.width/2, y:100, dx:4, dy:4, speed:4 };
+let playerScore = 0, aiScore = 0;
+let particles = [];
+
+// --- UTIL ---
+function clamp(val,min,max){ return Math.max(min,Math.min(max,val)); }
+
+// --- SELECCION DE NIVEL ---
+function selectLevel(lvl){
+    level = lvl;
+    playerScore = 0;
+    aiScore = 0;
+    resetBall();
+    player.powerReady=true; player.shield=0;
+    ai.slowBallReady=true; ai.superShots=3;
+    manualLevelSelect = true;
+}
+
+// --- DIBUJAR ---
+function drawPaddle(p){ ctx.fillStyle="#fff"; ctx.fillRect(p.x,p.y - p.shield,paddleWidth,paddleHeight + p.shield*2); }
+function drawBall(){ ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(ball.x,ball.y,ballRadius,0,Math.PI*2); ctx.fill(); }
+function drawParticles(){ for(let i=particles.length-1;i>=0;i--){ let p=particles[i]; ctx.fillStyle=`rgba(255,255,255,${p.alpha})`; ctx.fillRect(p.x,p.y,2,2); p.x+=p.dx; p.y+=p.dy; p.alpha-=0.03; if(p.alpha<=0) particles.splice(i,1);} }
+function drawScore(){ ctx.fillStyle="#fff"; ctx.font="36px monospace"; ctx.fillText(`${playerScore} - ${aiScore}`, canvas.width/2 - 40,50);}
+function drawBackground(){ ctx.fillStyle="#111"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.strokeStyle="rgba(255,255,255,0.05)"; ctx.lineWidth=1; for(let y=20;y<canvas.height;y+=20){ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();}}
+
+// --- ICONOS PIXELADOS ---
+function drawSword(x, y, scale, brightness=1){
+    ctx.fillStyle=`rgba(255,255,255,${brightness})`;
+    ctx.fillRect(x+2*scale, y, scale, 6*scale);
+    ctx.fillRect(x+3*scale, y+1*scale, scale, 5*scale);
+    ctx.fillRect(x+4*scale, y+2*scale, scale, 4*scale);
+    ctx.fillRect(x+3*scale, y+6*scale, 2*scale, scale);
+    ctx.fillRect(x+2*scale, y+7*scale, 4*scale, scale);
+}
+function drawShield(x, y, scale, brightness=1){
+    ctx.fillStyle=`rgba(255,255,255,${brightness})`;
+    ctx.fillRect(x+2*scale, y, 4*scale, 5*scale);
+    ctx.fillRect(x+1*scale, y+1*scale, 6*scale, 4*scale);
+    ctx.fillRect(x, y+2*scale, 8*scale, 2*scale);
+}
+function drawSlowIcon(x, y, scale, brightness=1){
+    ctx.fillStyle=`rgba(255,255,255,${brightness})`;
+    ctx.fillRect(x, y+scale*2, scale*4, scale*2);
+    ctx.fillRect(x+scale, y+scale, scale*2, scale);
+    ctx.fillRect(x+scale, y+scale*4, scale*2, scale);
+}
+function drawSuperIcon(x, y, scale, brightness=1){
+    ctx.fillStyle=`rgba(255,255,255,${brightness})`;
+    ctx.fillRect(x+scale, y, scale, scale*5);
+    ctx.fillRect(x, y+scale*2, scale*3, scale);
+}
+
+// --- HUD ---
+function drawBottomHUD(){
+    const baseY=canvas.height-50, iconScale=4, spacingX=140, spacingCooldown=6;
+    let swordBrightness = player.powerReady ? 1 : 0.6 + 0.4*Math.sin(Date.now()/200);
+    drawSword(50, baseY, iconScale, swordBrightness);
+    let powerRatio = player.powerReady ? 1 : Math.min((Date.now()-player.powerTime)/cooldownTime,1);
+    ctx.fillStyle="rgba(255,255,255,0.3)";
+    ctx.fillRect(50+iconScale*6+spacingCooldown,baseY+(iconScale*7-6)/2,60,6);
+    ctx.fillStyle="#fff";
+    ctx.fillRect(50+iconScale*6+spacingCooldown,baseY+(iconScale*7-6)/2,60*powerRatio,6);
+
+    let shieldBrightness = player.shield===0 ? 1 : 0.6 + 0.4*Math.sin(Date.now()/200);
+    drawShield(50+spacingX, baseY, iconScale, shieldBrightness);
+    let shieldRatio = player.shield===0 ? 1 : Math.min((Date.now()-player.shieldTime)/shieldTimeMax,1);
+    ctx.fillStyle="rgba(255,255,255,0.3)";
+    ctx.fillRect(50+spacingX+iconScale*6+spacingCooldown,baseY+(iconScale*7-6)/2,60,6);
+    ctx.fillStyle="#fff";
+    ctx.fillRect(50+spacingX+iconScale*6+spacingCooldown,baseY+(iconScale*7-6)/2,60*shieldRatio,6);
+
+    if(level===2){ 
+        let slowBrightness = ai.slowBallReady ? 1 : 0.4; 
+        drawSlowIcon(canvas.width-170, baseY, 5, slowBrightness);
+    }
+    if(level===3){ 
+        for(let i=0;i<ai.superShots;i++){ 
+            drawSuperIcon(canvas.width-100+i*28, baseY, 5, 1);
+        }
+    }
+}
+
+// --- FÍSICA ---
+function createParticles(x,y){ for(let i=0;i<6;i++) particles.push({x:x,y:y,dx:(Math.random()-0.5)*2,dy:(Math.random()-0.5)*2,alpha:0.5+Math.random()*0.5}); }
+function resetBall(){ ball.x=canvas.width/2; ball.y=100; ball.speed=4+Math.random()*0.5; let dirX=Math.random()>0.5?1:-1; let dirY=Math.random()>0.5?1:-1; ball.dx=dirX*ball.speed; ball.dy=dirY*ball.speed; }
+
+// --- MOVIMIENTO PELOTA ---
+function moveBall(delta){
+    ball.x += ball.dx*delta; ball.y += ball.dy*delta;
+    if(ball.y-ballRadius<0||ball.y+ballRadius>canvas.height){ ball.dy*=-1; createParticles(ball.x,ball.y);}
+    if(ball.x-ballRadius<player.x+paddleWidth && ball.y>player.y-player.shield && ball.y<player.y+paddleHeight+player.shield){
+        if(player.powerActive){
+            ball.dx = Math.abs(ball.dx) * 1.8;
+            ball.dy *= 1.2;
+            player.powerActive=false;
+            player.powerTime=Date.now();
+            player.powerReady=false;
+            setTimeout(()=>player.powerReady=true,cooldownTime);
+        } else {
+            ball.dx = Math.abs(ball.dx) + 0.2;
+            ball.dy += (Math.random()-0.5)*1;
+        }
+        createParticles(ball.x,ball.y);
+    }
+    if(ball.x+ballRadius>ai.x && ball.y>ai.y-ai.shield && ball.y<ai.y+paddleHeight+ai.shield){
+        if(level===3 && ai.superShots>0 && Math.random()<0.3){
+            ball.dx = -Math.abs(ball.dx) * 1.8;
+            ball.dy *= 1.2;
+            ai.superShots--;
+        } else { ball.dx=-Math.abs(ball.dx); ball.dy+=(Math.random()-0.5)*1; }
+        createParticles(ball.x,ball.y);
+    }
+    if(level===2 && ai.slowBallReady && Math.abs(ball.x-ai.x)<100){ 
+        ball.dx*=0.5; 
+        ball.dy*=0.5; 
+        ai.slowBallReady=false;
+    }
+    if(ball.x-ballRadius<0){ aiScore++; nextPoint();}
+    if(ball.x+ballRadius>canvas.width){ playerScore++; nextPoint();}
+}
+
+// --- IA ---
+function moveAI(delta){ const target=ball.y-paddleHeight/2+ballRadius; ai.y+=clamp(target-ai.y,-ai.dy*delta*60,ai.dy*delta*60); ai.y=clamp(ai.y,0,canvas.height-paddleHeight); }
+
+// --- SIGUIENTE PUNTO ---
+function nextPoint(){ if(level===2) ai.slowBallReady=true; if(level===3) ai.superShots=3; ball.speed*=1.05; resetBall(); }
+
+// --- UPDATE NIVEL AUTOMATICO ---
+function updateLevel(){
+    if(!manualLevelSelect){
+        if(playerScore>=11 || aiScore>=11){
+            level++; if(level>maxLevel) level=1;
+            playerScore=0; aiScore=0; resetBall();
+            player.powerReady=true; player.shield=0;
+            ai.slowBallReady=true; ai.superShots=3;
+        }
+    }
+}
+
+// --- INPUT ---
+document.addEventListener("keydown",e=>{ 
+    if(e.key==="ArrowUp") player.dy=-6;
+    if(e.key==="ArrowDown") player.dy=6;
+    if(e.key===" " && player.powerReady) player.powerActive=true;
+    if(e.key==="Shift"){ player.shield=20; player.shieldTime=Date.now(); setTimeout(()=>player.shield=0,shieldTimeMax); }
+});
+document.addEventListener("keyup",e=>{ if(e.key==="ArrowUp"||e.key==="ArrowDown") player.dy=0; });
+
+// --- UPDATE ---
+let lastTime=performance.now();
+function update(){ const now=performance.now(); const delta=(now-lastTime)/16; lastTime=now; player.y+=player.dy*delta; player.y=clamp(player.y,0,canvas.height-paddleHeight); moveBall(delta); moveAI(delta); updateLevel(); }
+
+// --- DRAW ---
+function draw(){ drawBackground(); drawPaddle(player); drawPaddle(ai); drawBall(); drawParticles(); drawScore(); drawBottomHUD(); }
+
+// --- LOOP ---
+function loop(){ update(); draw(); requestAnimationFrame(loop);}
+resetBall(); loop();
+</script>
+</body>
+</html>

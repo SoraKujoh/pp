@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>El tresor amagat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>El tresor amagat</h1>
+    <div class="stats">
+      <span id="levelDisplay">Nivel: 1</span>
+      <span id="scoreDisplay">Puntuación: 0</span>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="game" width="320" height="240"></canvas>
+      <div id="overlay" class="hidden">
+        <div class="message">
+          <h2 id="overlayTitle">¡Has encontrado el tresor!</h2>
+          <p id="overlayText">Continuando al próximo nivel...</p>
+          <button id="restart">Empezar de nuevo</button>
+        </div>
+      </div>
+    </div>
+    <p class="hint">Usa las flechas del teclado para mover el personaje.</p>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
