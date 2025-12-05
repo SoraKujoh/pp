@@ -3,50 +3,86 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Cursa - Nitro y efecto de velocidad</title>
+<title>Cursa — Versión final (policía sin disparos, posición forzada)</title>
 <style>
-  :root{--bg:#0b0f14;--road:#2b2f36;--accent:#0a84ff;--ui:#e6eefc}
-  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,Arial;color:var(--ui)}
-  .wrap{display:flex;align-items:center;justify-content:center;height:100vh}
-  #ui{position:fixed;left:14px;top:12px;z-index:60}
-  #ui button{margin-left:8px;padding:6px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer}
-  canvas{border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.6);max-width:98vw;height:auto;display:block;background:#071018}
-  .hint{position:fixed;right:14px;top:12px;color:#cbd5e1;font-size:13px;z-index:60}
-  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:70;pointer-events:none}
-  .panel{pointer-events:auto;background:rgba(0,0,0,0.6);padding:18px;border-radius:12px;text-align:center}
+  :root{
+    --bg:#071018;
+    --panel:rgba(255,255,255,0.04);
+    --accent1:#60a5fa;
+    --accent2:#ff6b6b;
+    --ui:#e6eefc;
+    --muted:#9fb0c8;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#071018 0%, #0b1220 100%);font-family:Inter,system-ui,Arial;color:var(--ui);-webkit-font-smoothing:antialiased}
+  .wrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:18px;box-sizing:border-box}
+  canvas{border-radius:12px;box-shadow:0 18px 60px rgba(2,6,12,0.7);max-width:98vw;height:auto;display:block;background:transparent}
+  #hud{position:fixed;left:18px;top:18px;z-index:80;display:flex;gap:14px;align-items:center}
+  .stat{
+    background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+    border:1px solid rgba(255,255,255,0.04);
+    padding:10px 14px;border-radius:12px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(6px)
+  }
+  .score{
+    font-weight:800;font-size:18px;line-height:1;color:linear-gradient(90deg,var(--accent1),var(--accent2));
+    display:flex;flex-direction:column;
+  }
+  .score .label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:0.6px}
+  .score .value{font-size:20px;color:#fff}
+  .lives{display:flex;flex-direction:column;align-items:flex-end}
+  .lives .label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:0.6px}
+  .wheels{display:flex;gap:6px}
+  .wheel{font-size:20px;filter:drop-shadow(0 6px 18px rgba(0,0,0,0.6))}
+  #controls{position:fixed;right:18px;top:18px;z-index:80;display:flex;gap:8px}
+  button.ui-btn{background:linear-gradient(90deg,var(--accent1),#7dd3fc);border:none;color:#04263b;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(96,165,250,0.12)}
+  .hint{position:fixed;right:18px;top:72px;color:var(--muted);font-size:13px;z-index:80}
+  .press-counter{position:fixed;left:18px;bottom:18px;color:var(--muted);font-size:13px;z-index:80}
+  .press-rate{position:fixed;left:18px;bottom:44px;color:var(--muted);font-size:13px;z-index:80}
+  .announce{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);z-index:85;color:#fff;font-size:40px;font-weight:900;text-shadow:0 12px 40px rgba(0,0,0,0.7);padding:12px 26px;border-radius:12px;pointer-events:none;display:none}
+  .announce .fancy{background:linear-gradient(90deg,var(--accent1),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .escape-text{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:86;font-weight:900;font-size:52px;letter-spacing:2px;color:#fff;text-shadow:0 12px 40px rgba(0,0,0,0.8);display:none;pointer-events:none}
+  .escape-text .glow{background:linear-gradient(90deg,var(--accent1),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .nitro-indicator{position:fixed;right:18px;bottom:18px;padding:8px 12px;border-radius:10px;background:linear-gradient(90deg,var(--accent2),#ffd166);color:#04263b;font-weight:800;z-index:80;display:none}
+  .nitro-indicator.active{display:block;box-shadow:0 12px 40px rgba(255,107,107,0.08)}
+  .heart-ui{position:fixed;right:18px;top:120px;color:#ff6b9a;font-weight:800;z-index:80;display:none}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:90;pointer-events:none}
+  .panel{pointer-events:auto;background:rgba(0,0,0,0.6);padding:18px;border-radius:12px;text-align:center;color:#fff}
   .panel button{margin-top:10px}
-  .press-counter{position:fixed;left:14px;bottom:12px;color:#cbd5e1;font-size:13px;z-index:60}
-  .press-rate{position:fixed;left:14px;bottom:36px;color:#cbd5e1;font-size:13px;z-index:60}
-  .announce{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);z-index:65;color:#fff;font-size:40px;font-weight:800;text-shadow:0 10px 30px rgba(0,0,0,0.6);padding:12px 26px;border-radius:12px;pointer-events:none;background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));border:1px solid rgba(255,255,255,0.06);display:none;}
-  .announce .fancy{display:inline-block;background:linear-gradient(90deg,#ff6b6b,#ffd166,#60a5fa);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 18px rgba(96,165,250,0.12));}
-  .nitro-indicator{position:fixed;right:18px;bottom:18px;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.06);font-weight:700;color:#fff;z-index:60;display:none}
-  .nitro-indicator.active{display:block;background:linear-gradient(90deg,#ff6b6b,#60a5fa);color:#fff;box-shadow:0 8px 30px rgba(96,165,250,0.12)}
-  @keyframes announceIn {0%{transform:translate(-50%,-60%) scale(0.92);opacity:0}60%{transform:translate(-50%,-48%) scale(1.03);opacity:1}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}
-  @keyframes announceOut {0%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-60%) scale(0.92);opacity:0}}
-  .announce.show{display:block;animation:announceIn 420ms cubic-bezier(.2,.9,.2,1)}
-  .announce.hide{animation:announceOut 360ms ease-in forwards}
+  @media(max-width:720px){ .announce{font-size:28px} .escape-text{font-size:36px} .score .value{font-size:16px} }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div id="ui">
-    <strong>Puntuació:</strong> <span id="score">0</span>
-    <strong style="margin-left:12px">Vides:</strong> <span id="lives">3</span>
-    <button id="pauseBtn">Pausa</button>
-    <button id="restartBtn">Reiniciar</button>
+  <div id="hud">
+    <div class="stat score" id="scoreStat">
+      <div class="label">PUNTOS</div>
+      <div class="value" id="score">0</div>
+    </div>
+    <div class="stat lives" id="livesStat">
+      <div class="label">VIDAS</div>
+      <div class="wheels" id="wheels"></div>
+    </div>
   </div>
+
+  <div id="controls">
+    <button id="pauseBtn" class="ui-btn">Pausa</button>
+    <button id="restartBtn" class="ui-btn">Reiniciar</button>
+  </div>
+
   <div class="hint">Flechas ← → para cambiar de carril. Pulsa ESPACIO intensamente en el evento.</div>
   <div class="press-rate" id="pressRate" style="display:none">Ritmo: 0 p/s</div>
-  <div class="press-counter" id="pressCounter" style="display:none">Pulsaciones restantes: 150</div>
+  <div class="press-counter" id="pressCounter" style="display:none">Pulsaciones restantes: 30</div>
   <div id="announceText" class="announce"><span class="fancy">Police Coming</span></div>
+  <div id="escapeText" class="escape-text"><span class="glow">ESCAPE!</span></div>
   <div id="nitroIndicator" class="nitro-indicator">NITRO</div>
+  <div id="heartUI" class="heart-ui">Corazón listo — +1 vida</div>
+
   <canvas id="game" width="820" height="1000"></canvas>
 
   <div class="overlay" id="overlay" style="display:none">
     <div class="panel" id="panel">
       <h2 id="panelTitle">Game Over</h2>
       <p id="panelText">Puntuación: 0</p>
-      <button id="panelRestart">Reiniciar</button>
+      <button id="panelRestart" class="ui-btn">Reiniciar</button>
     </div>
   </div>
 </div>
@@ -54,31 +90,33 @@
 <script>
 /* ====== Estado y configuración ====== */
 const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
-const scoreEl = document.getElementById('score'), livesEl = document.getElementById('lives');
+const scoreEl = document.getElementById('score'), wheelsEl = document.getElementById('wheels');
 const pauseBtn = document.getElementById('pauseBtn'), restartBtn = document.getElementById('restartBtn');
 const overlay = document.getElementById('overlay'), panelTitle = document.getElementById('panelTitle'), panelText = document.getElementById('panelText'), panelRestart = document.getElementById('panelRestart');
 const pressCounterEl = document.getElementById('pressCounter'), pressRateEl = document.getElementById('pressRate');
-const announceEl = document.getElementById('announceText'), nitroIndicator = document.getElementById('nitroIndicator');
+const announceEl = document.getElementById('announceText'), escapeEl = document.getElementById('escapeText'), nitroIndicator = document.getElementById('nitroIndicator');
+const heartUI = document.getElementById('heartUI');
 
 const W = canvas.width, H = canvas.height;
 let running = true, paused = false;
 let score = 0, lives = 3, startTime = Date.now();
 let keys = {};
 
-/* carretera y perspectiva por defecto (vista trasera) */
+/* carretera y perspectiva */
 const lanes = 3;
 let baseRoadWidth = W * 0.72;
 const roadCenterX = W/2;
 const horizonY_default = H * 0.12;
 let horizonY = horizonY_default;
 
-/* jugador en perspectiva (valores base) */
+/* jugador */
 const player = {
   lane: 1,
   x: W/2 - 39,
   y: H - 170,
   baseW: 78, baseH: 96,
-  tilt: 0, wheelRotation: 0, targetX: 0
+  tilt: 0, wheelRotation: 0, targetX: 0,
+  initY: H - 170
 };
 
 /* partículas y nitro */
@@ -98,50 +136,89 @@ const obstacleTypes = [
 let obstacles = [];
 let spawnTimer = 0, spawnInterval = 60;
 
+/* corazones (coleccionables) */
+let hearts = [];
+const heartVy = 2.2;
+
 /* evento escape */
 let eventActive = false;
-let eventPhase = null; // 'countdown'|'announce'|'bar'
+let eventPhase = null; // 'countdown'|'announce'|'bar'|'escapeAnim'
 let countdownValue = 3, countdownTimer = 0;
 let announceTimer = 0, announceDuration = 1.0;
 let barProgress = 0, barMax = 1;
 
-/* Ajustes: 150 pulsaciones, sin auto-fill, decay si paras */
-const requiredPresses = 150;
-const barPressIncrement = 1 / requiredPresses;
-const barAutoRate = 0.0;
+/* pulsaciones */
+const requiredPressesBase = 30;
+let eventCount = 0;
+let requiredPressesCurrent = requiredPressesBase;
+let barPressIncrement = 1 / requiredPressesCurrent;
 const barDecayRate = 0.03;
 let pressTimestamps = [];
 
-/* Boost al inicio del evento */
+/* boost nitro */
 const eventBoostDuration = 0.9;
 const eventBoostSpeed = 700;
 let eventBoostRemaining = 0;
 
-let police = null;
-let nextTriggerScore = 100;
+/* animación escape */
+let escapeAnimTimer = 0;
+const escapeAnimDuration = 1.6;
+const escapeReturnDuration = 0.6;
+
+/* bloqueo spawn tras escape */
+let postEscapeSpawnBlock = false;
+let postEscapeBlockTimer = 0;
+const postEscapeBlockDuration = 1.5;
+
+/* umbrales progresivos: 200,500,700,1000... (alterna +300/+200) */
+let nextTriggerScore = 200;
+const triggerSteps = [300,200];
+let triggerStepIndex = 0;
 let savedSpawnInterval = spawnInterval;
 
-/* transición de cámara */
+/* policía (más lento) */
+let police = null;
+/* mantenemos bullets array por compatibilidad pero policía no dispara */
+let bullets = [];
+const bulletSpeed = 420;
+const bulletRadius = 6;
+const policeShootInterval = 3.0;
+const policeFirstShootDelay = 1.5;
+const policeBaseSpeed = 180; // más lento
+
+/* corazones */
+const heartSpawnDelayAfterEvent = 1.2;
+let heartPending = false;
+let heartPendingTimer = 0;
+const maxLives = 5;
+
+/* efectos visuales */
+let muzzleFlashesArr = [];
+let impactFlashAlpha = 0;
+const impactFlashDecay = 3.5;
+
+/* transición */
 let transitionProgress = 0;
 let transitionTarget = 0;
 const transitionDuration = 900;
 let transitionStartTime = 0;
 
-/* temporizador para dt */
+let eventStartPerf = 0;
 let lastTime = performance.now();
 
 /* ====== Utilidades ====== */
 function lerp(a,b,t){ return a + (b-a)*t; }
 function easeInOut(t){ return t<0.5 ? 2*t*t : -1 + (4-2*t)*t; }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
 function depthScale(y){
-  const t = Math.max(0, Math.min(1, (y - horizonY) / (H - horizonY)));
+  const t = clamp((y - horizonY) / (H - horizonY), 0, 1);
   return 0.35 + t * 0.65;
 }
 function roadWidthAt(y){
   const topW = baseRoadWidth * 0.18;
   const bottomW = baseRoadWidth;
-  const t = Math.max(0, Math.min(1, (y - horizonY) / (H - horizonY)));
+  const t = clamp((y - horizonY) / (H - horizonY), 0, 1);
   return topW + (bottomW - topW) * t;
 }
 function laneXAt(laneIndex, y, carWidth){
@@ -151,10 +228,31 @@ function laneXAt(laneIndex, y, carWidth){
   return left + laneIndex * laneW + (laneW - carWidth)/2;
 }
 
-/* ====== Partículas nitro ====== */
+/* ====== UI: score y vidas (ruedas) ====== */
+function renderScore(){
+  scoreEl.textContent = score;
+}
+function renderLives(){
+  wheelsEl.innerHTML = '';
+  for(let i=0;i<lives;i++){
+    const span = document.createElement('span');
+    span.className = 'wheel';
+    span.textContent = '🛞';
+    wheelsEl.appendChild(span);
+  }
+  if(lives === 0){
+    const span = document.createElement('span');
+    span.style.color = '#ff6b6b';
+    span.style.fontWeight = '800';
+    span.textContent = '—';
+    wheelsEl.appendChild(span);
+  }
+}
+
+/* ====== Partículas y nitro ====== */
 function spawnParticle(x,y,dir,life,clr,vel){
   if(particles.length > maxParticles) particles.shift();
-  particles.push({x,y,dx: (Math.random()*0.6 - 0.3) + (dir*vel), dy: -Math.random()*vel - 0.6, life, age:0, clr, size: Math.random()*3 + 2});
+  particles.push({x,y,dx:(Math.random()*0.6-0.3)+(dir*vel),dy:-Math.random()*vel-0.6,life,age:0,clr,size:Math.random()*3+2});
 }
 function updateParticles(dt){
   for(let i=particles.length-1;i>=0;i--){
@@ -178,8 +276,6 @@ function drawParticles(){
     ctx.globalAlpha = 1;
   });
 }
-
-/* ====== Nitro visual y screen shake ====== */
 function setNitro(on){
   nitroActive = on;
   if(on) nitroIndicator.classList.add('active'); else nitroIndicator.classList.remove('active');
@@ -195,32 +291,8 @@ function applyScreenShake(dt){
     canvas.style.transform = '';
   }
 }
-function drawNitroEffect(x,y,w,h,phase){
-  const flameW = w * 0.36, flameH = h * 0.6;
-  const fx = x + w*0.5 - flameW/2;
-  const fy = y + h*0.6;
-  const g = ctx.createLinearGradient(fx, fy, fx, fy + flameH);
-  g.addColorStop(0, 'rgba(255,255,255,0.95)');
-  g.addColorStop(0.15, 'rgba(255,220,120,0.95)');
-  g.addColorStop(0.35, 'rgba(255,120,40,0.9)');
-  g.addColorStop(1, 'rgba(200,40,200,0.06)');
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  const jitter = Math.sin(phase*8) * 6;
-  ctx.ellipse(fx + flameW/2 + jitter*0.2, fy + flameH/2, flameW * (1 + Math.abs(Math.sin(phase*6))*0.25), flameH * (0.9 + Math.abs(Math.cos(phase*5))*0.25), 0, 0, Math.PI*2);
-  ctx.fill();
-  for(let i=0;i<3;i++){
-    ctx.globalAlpha = 0.12 * (1 - i*0.25);
-    ctx.fillStyle = i===0 ? 'rgba(255,120,40,0.9)' : (i===1 ? 'rgba(255,60,160,0.12)' : 'rgba(60,140,255,0.08)');
-    ctx.beginPath();
-    ctx.ellipse(fx + flameW/2 + (i-1)*18 + Math.sin(phase*6+i)*6, fy + flameH*0.6 + i*12, flameW * (1.6 + i*0.6), flameH * (0.6 + i*0.6), 0, 0, Math.PI*2);
-    ctx.fill();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-}
 
-/* ====== Spawn obstaculos (perspectiva) ====== */
+/* ====== Obstáculos ====== */
 function spawnObstacle(){
   const type = obstacleTypes[Math.floor(Math.random()*obstacleTypes.length)];
   const y = horizonY - (Math.random()*120 + type.baseH);
@@ -232,12 +304,88 @@ function spawnObstacle(){
   obstacles.push({type, x, y, vy, laneIndex});
 }
 
+/* ====== Corazones ====== */
+function spawnHeart(){
+  const laneIndex = Math.floor(Math.random()*lanes);
+  const y = horizonY - 80;
+  const s = depthScale(y);
+  const w = 36 * s;
+  const x = laneXAt(laneIndex, y, w);
+  hearts.push({lane: laneIndex, x, y, vy: heartVy});
+  heartUI.style.display = 'none';
+  heartPending = false;
+}
+function updateHearts(dt){
+  for(let i=hearts.length-1;i>=0;i--){
+    const h = hearts[i];
+    h.y += h.vy * dt * 60;
+    h.x = laneXAt(h.lane, h.y, 36 * depthScale(h.y));
+    const sP = depthScale(player.y + player.baseH/2);
+    const pW = player.baseW * sP, pH = player.baseH * sP;
+    const pX = player.x, pY = player.y;
+    const hw = 36 * depthScale(h.y);
+    if(!(pX + pW < h.x || pX > h.x + hw || pY + pH < h.y || pY > h.y + hw)){
+      hearts.splice(i,1);
+      lives = Math.min(maxLives, lives + 1);
+      renderLives();
+      impactFlashAlpha = 0.35;
+      screenShake = Math.max(screenShake, 6);
+    } else if(h.y > H + 80){
+      hearts.splice(i,1);
+    }
+  }
+}
+function drawHearts(){
+  hearts.forEach(h=>{
+    const s = depthScale(h.y);
+    const w = 36 * s, hH = 32 * s;
+    const x = h.x, y = h.y;
+    ctx.save();
+    ctx.translate(x + w/2, y + hH/2);
+    ctx.rotate(Math.sin((performance.now()/300) + h.lane) * 0.12);
+    ctx.translate(-(x + w/2), -(y + hH/2));
+    const grad = ctx.createLinearGradient(x, y, x, y + hH);
+    grad.addColorStop(0, '#ff6b9a'); grad.addColorStop(1, '#ff2d55');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x + w*0.5, y + hH*0.85);
+    ctx.bezierCurveTo(x + w*0.1, y + hH*0.6, x + w*0.05, y + hH*0.25, x + w*0.25, y + hH*0.18);
+    ctx.bezierCurveTo(x + w*0.4, y + hH*0.12, x + w*0.5, y + hH*0.28, x + w*0.5, y + hH*0.45);
+    ctx.bezierCurveTo(x + w*0.5, y + hH*0.28, x + w*0.6, y + hH*0.12, x + w*0.75, y + hH*0.18);
+    ctx.bezierCurveTo(x + w*0.95, y + hH*0.25, x + w*0.9, y + hH*0.6, x + w*0.5, y + hH*0.85);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+/* ====== Balas y efectos de policía (DESACTIVADOS) ====== */
+/* Policía ya no dispara: funciones vacías o que limpian arrays residuales */
+function spawnBullet(fromX, fromY, targetX, targetY){
+  // Intencionalmente vacío: la policía no dispara
+}
+function updateBullets(dt){
+  // Aseguramos que no queden balas residuales
+  if(bullets.length) bullets.length = 0;
+}
+function drawBullets(){
+  // Sin balas, no dibujamos nada
+}
+function updateMuzzleFlashes(dt){
+  // Limpiar efectos de fogonazo si existieran
+  if(muzzleFlashesArr.length) muzzleFlashesArr.length = 0;
+}
+
+/* ====== Progresión de pulsaciones ====== */
+function computeRequiredPresses(n){
+  return requiredPressesBase + 5 * (n - 1);
+}
+
 /* ====== Evento: inicio y fin ====== */
 function tryTriggerEvent(){
   if(eventActive) return;
   if(score >= nextTriggerScore){
     startEscapeEvent();
-    nextTriggerScore += 100;
   }
 }
 function startEscapeEvent(){
@@ -247,6 +395,15 @@ function startEscapeEvent(){
   announceTimer = 0;
   barProgress = 0;
   eventBoostRemaining = 0;
+  escapeAnimTimer = 0;
+
+  eventCount++;
+  requiredPressesCurrent = computeRequiredPresses(eventCount);
+  barPressIncrement = 1 / requiredPressesCurrent;
+
+  nextTriggerScore += triggerSteps[triggerStepIndex];
+  triggerStepIndex = (triggerStepIndex + 1) % triggerSteps.length;
+
   savedSpawnInterval = spawnInterval;
   spawnInterval = Infinity;
   transitionTarget = 1;
@@ -255,35 +412,49 @@ function startEscapeEvent(){
     lane: player.lane,
     x: laneXAt(player.lane, player.y, player.baseW),
     y: player.y + 300,
-    speed: 220,
+    speed: policeBaseSpeed,
     color:'#2b6cff',
     delay: 0.6,
     delayTimer: 0,
     active: false,
-    lightPhase: 0
+    lightPhase: 0,
+    shootTimer: 0
   };
+  bullets = [];
+  muzzleFlashesArr = [];
   pressTimestamps = [];
   pressCounterEl.style.display = 'block';
   pressRateEl.style.display = 'block';
   announceEl.classList.remove('show','hide');
   announceEl.style.display = 'none';
+  escapeEl.style.display = 'none';
   updatePressCounter();
   updatePressRate(0);
+
+  pressCounterEl.textContent = `Pulsaciones restantes: ${requiredPressesCurrent}`;
+  eventStartPerf = performance.now();
+
+  heartPending = true;
+  heartPendingTimer = 0;
+  heartUI.style.display = 'none';
 }
-function endEscapeEvent(success){
+function endEscapeEventFail(){
   transitionTarget = 0;
   transitionStartTime = performance.now();
   eventActive = false;
   eventPhase = null;
   police = null;
+  bullets = [];
+  muzzleFlashesArr = [];
   spawnInterval = Math.max(28, savedSpawnInterval - 6);
   pressCounterEl.style.display = 'none';
   pressRateEl.style.display = 'none';
   announceEl.classList.remove('show','hide');
   announceEl.style.display = 'none';
+  escapeEl.style.display = 'none';
   setNitro(false);
-  if(success){ score += 50; scoreEl.textContent = score; }
-  else { lives--; livesEl.textContent = lives; if(lives <= 0){ running = false; showPanel('Game Over', `Puntuación: ${score}`); } }
+  lives--; renderLives();
+  if(lives <= 0){ running = false; showPanel('Game Over', `Puntuación: ${score}`); }
 }
 
 /* ====== Transición ====== */
@@ -304,12 +475,28 @@ function update(now){
   updateTransition(now);
 
   updateParticles(dt);
+  updateBullets(dt); // limpia cualquier bala
+  updateMuzzleFlashes(dt);
+  updateHearts(dt);
+
+  if(impactFlashAlpha > 0){
+    impactFlashAlpha = Math.max(0, impactFlashAlpha - dt * impactFlashDecay);
+  }
+
   applyScreenShake(dt);
+
+  if(heartPending){
+    heartPendingTimer += dt;
+    if(heartPendingTimer >= heartSpawnDelayAfterEvent){
+      spawnHeart();
+    } else {
+      heartUI.style.display = 'block';
+    }
+  }
 
   if(!eventActive){
     if(keys['ArrowLeft']){ player.lane = Math.max(0, player.lane - 1); keys['ArrowLeft'] = false; }
     if(keys['ArrowRight']){ player.lane = Math.min(lanes-1, player.lane + 1); keys['ArrowRight'] = false; }
-
     player.targetX = laneXAt(player.lane, player.y, player.baseW);
     player.x += (player.targetX - player.x) * 0.22;
     const dx = player.targetX - player.x;
@@ -317,11 +504,18 @@ function update(now){
     player.wheelRotation += Math.sign(dx) * 0.18;
     player.wheelRotation *= 0.92;
 
-    spawnTimer++;
-    if(spawnTimer > spawnInterval){
-      spawnTimer = 0;
-      spawnObstacle();
-      if(spawnInterval > 28) spawnInterval -= 0.35;
+    if(postEscapeSpawnBlock){
+      postEscapeBlockTimer += dt;
+      if(postEscapeBlockTimer >= postEscapeBlockDuration){
+        postEscapeSpawnBlock = false;
+      }
+    } else {
+      spawnTimer++;
+      if(spawnTimer > spawnInterval){
+        spawnTimer = 0;
+        spawnObstacle();
+        if(spawnInterval > 28) spawnInterval -= 0.35;
+      }
     }
 
     const elapsedGame = (Date.now() - startTime) / 1000;
@@ -331,7 +525,7 @@ function update(now){
       const s = depthScale(o.y + o.type.baseH/2);
       o.y += (o.vy + gameSpeed) * (0.9 + s * 0.9) * dt * 60;
       o.x = laneXAt(o.laneIndex, o.y, o.type.baseW * s);
-      if(o.y > H + 120){ obstacles.splice(i,1); score += 10; scoreEl.textContent = score; }
+      if(o.y > H + 120){ obstacles.splice(i,1); score += 10; renderScore(); }
       else {
         const sO = depthScale(o.y + o.type.baseH/2);
         const oW = o.type.baseW * sO, oH = o.type.baseH * sO;
@@ -342,7 +536,7 @@ function update(now){
         const margin = Math.max(4, 6 * sO);
         if(!(pX + pW - margin < oX || pX + margin > oX + oW || pY + pH - margin < oY || pY + margin > oY + oH)){
           obstacles.splice(i,1);
-          lives--; livesEl.textContent = lives; flashScreen();
+          lives--; renderLives(); flashScreen();
           if(lives <= 0){ running = false; showPanel('Game Over', `Puntuación: ${score}`); return; }
         }
       }
@@ -378,7 +572,8 @@ function update(now){
       eventPhase = 'bar';
       barProgress = 0;
       eventBoostRemaining = eventBoostDuration;
-      if(police){ police.delayTimer = 0; police.active = false; }
+      if(police){ police.delayTimer = 0; police.active = false; police.shootTimer = 0; }
+      pressCounterEl.textContent = `Pulsaciones restantes: ${requiredPressesCurrent}`;
     }
     return;
   }
@@ -390,25 +585,23 @@ function update(now){
     player.x += (player.targetX - player.x) * 0.22;
 
     const nowMs = performance.now();
-    const decayThreshold = 300;
     const lastPress = pressTimestamps.length ? pressTimestamps[pressTimestamps.length-1] : 0;
-    if(!lastPress || (nowMs - lastPress) > decayThreshold){
+    if(!lastPress || (nowMs - lastPress) > 300){
       barProgress -= barDecayRate * dt;
     }
     if(barProgress < 0) barProgress = 0;
-    if(barProgress >= barMax){ barProgress = barMax; endEscapeEvent(true); return; }
+    if(barProgress >= barMax){
+      eventPhase = 'escapeAnim';
+      escapeAnimTimer = 0;
+      setNitro(true);
+      escapeEl.style.display = 'block';
+      pressCounterEl.style.display = 'none';
+      pressRateEl.style.display = 'none';
+      return;
+    }
 
-    const nowPerf = performance.now();
-    while(pressTimestamps.length && (nowPerf - pressTimestamps[0]) > 1000) pressTimestamps.shift();
-    const pressRate = pressTimestamps.length;
-    updatePressRate(pressRate);
-
-    const intenseThreshold = 12;
-    let intensityFactor = Math.min(1, pressRate / intenseThreshold);
     const baseSlowFromProgress = 1 - Math.min(0.95, barProgress * 0.98);
-    const intensitySlow = 1 - Math.min(0.95, intensityFactor * 0.95);
-    const slowFactor = Math.max(0.05, baseSlowFromProgress * intensitySlow);
-
+    const slowFactor = Math.max(0.05, baseSlowFromProgress);
     const policeEffectiveSpeed = police ? police.speed * slowFactor : 0;
 
     let boostThisFrame = 0;
@@ -422,19 +615,8 @@ function update(now){
       }
       screenShake = Math.max(screenShake, 6);
       setNitro(true);
-    }
-
-    const intenseThreshold2 = 10;
-    if(pressRate >= intenseThreshold2){
-      setNitro(true);
-      const px = player.x + player.baseW*0.5;
-      const py = player.y + player.baseH*0.9;
-      for(let i=0;i<Math.min(6, pressRate); i++){
-        spawnParticle(px + (Math.random()*36-18), py + Math.random()*6, 0, 0.45 + Math.random()*0.4, pressRate > 14 ? 'rgba(255,80,40,1)' : 'rgba(255,160,60,1)', 1.6 + Math.random()*1.6);
-      }
-      screenShake = Math.max(screenShake, Math.min(4, pressRate*0.25));
     } else {
-      if(eventBoostRemaining <= 0) setNitro(false);
+      setNitro(false);
     }
 
     const minAdvanceWhenProgress = 0.06;
@@ -449,6 +631,7 @@ function update(now){
         police.delayTimer += dt;
         if(police.delayTimer >= police.delay){
           police.active = true;
+          police.shootTimer = 0;
         }
       } else {
         const dy = player.y - police.y;
@@ -458,9 +641,12 @@ function update(now){
         const targetPoliceX = laneXAt(player.lane, player.y, player.baseW);
         police.x += (targetPoliceX - police.x) * 0.08;
         if(police.y <= player.y + 40){
-          endEscapeEvent(false);
+          endEscapeEventFail();
           return;
         }
+
+        // Antes aquí se llamaba a spawnBullet; ahora la policía no dispara.
+        // Mantenemos temporizadores para comportamiento visual (luces) pero no generamos proyectiles.
       }
       police.lightPhase += dt * 8;
     }
@@ -471,36 +657,84 @@ function update(now){
     updatePressCounter();
     return;
   }
+
+  /* Animación de escape: acelerón y retorno forzado al final */
+  if(eventPhase === 'escapeAnim'){
+    escapeAnimTimer += dt;
+    const t = escapeAnimTimer;
+
+    if(t <= escapeAnimDuration){
+      player.y -= 1000 * dt;
+      screenShake = Math.max(screenShake, 7);
+      const px = player.x + player.baseW*0.5;
+      const py = player.y + player.baseH*0.9;
+      for(let i=0;i<10;i++){
+        spawnParticle(px + (Math.random()*44-22), py + Math.random()*10, 0, 0.5 + Math.random()*0.4, `rgba(255,${140+Math.floor(Math.random()*60)},${40+Math.floor(Math.random()*80)},1)`, 2.2 + Math.random()*2.4);
+      }
+    } else {
+      const rt = clamp((t - escapeAnimDuration) / escapeReturnDuration, 0, 1);
+      player.y = lerp(player.y, player.initY, easeInOut(rt));
+      if(rt >= 1){
+        // FIN: forzar restauración completa del jugador y volver a juego normal
+        setNitro(false);
+        escapeEl.style.display = 'none';
+
+        // Restaurar posición exacta e estado del jugador
+        player.y = player.initY;
+        player.lane = Math.max(0, Math.min(lanes - 1, player.lane));
+        player.x = laneXAt(player.lane, player.initY, player.baseW);
+        player.targetX = player.x;
+        player.tilt = 0;
+        player.wheelRotation = 0;
+
+        // Forzar cámara y transición a estado inicial inmediatamente
+        transitionTarget = 0;
+        transitionStartTime = performance.now();
+        transitionProgress = 0;
+        horizonY = horizonY_default;
+
+        // Restaurar estado del evento y del mundo
+        eventActive = false; eventPhase = null;
+        police = null;
+        bullets = [];
+        muzzleFlashesArr = [];
+        spawnInterval = Math.max(28, savedSpawnInterval - 6);
+
+        // Recompensa y bloqueo de spawn temporal
+        score += 50; renderScore();
+        postEscapeSpawnBlock = true;
+        postEscapeBlockTimer = 0;
+
+        // programar corazón para aparecer tras un pequeño delay
+        heartPending = true;
+        heartPendingTimer = 0;
+        heartUI.style.display = 'block';
+      }
+    }
+    return;
+  }
 }
 
 /* ====== Dibujo ====== */
 function drawRoad(){
-  if(eventActive && eventPhase === 'bar'){
+  if(eventActive && (eventPhase === 'bar' || eventPhase === 'escapeAnim')){
     const roadW = baseRoadWidth;
     const left = roadCenterX - roadW/2;
-    ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = '#2b2f36';
-    ctx.fillRect(left, 0, roadW, H);
+    ctx.fillStyle = '#071018'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#2b2f36'; ctx.fillRect(left, 0, roadW, H);
     ctx.strokeStyle = '#f7f7f7'; ctx.lineWidth = 4; ctx.setLineDash([28,22]);
-    for(let i=1;i<lanes;i++){
-      const x = left + i * (roadW / lanes);
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    }
+    for(let i=1;i<lanes;i++){ const x = left + i * (roadW / lanes); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    ctx.fillRect(left-10, 0, 8, H);
-    ctx.fillRect(left + roadW + 2, 0, 8, H);
-    if(nitroActive){
+    ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(left-10, 0, 8, H); ctx.fillRect(left + roadW + 2, 0, 8, H);
+
+    if(nitroActive || eventPhase === 'escapeAnim'){
       ctx.save();
-      ctx.globalAlpha = 0.12;
+      ctx.globalAlpha = 0.14;
       ctx.strokeStyle = '#9fb8ff';
       ctx.lineWidth = 2;
-      for(let i=0;i<18;i++){
-        const yy = (i/18)*H + (performance.now()%600)/2;
-        ctx.beginPath();
-        ctx.moveTo(left + 8, yy);
-        ctx.lineTo(left + 8 + 120 + (i*8), yy - 40 - (i*2));
-        ctx.stroke();
+      for(let i=0;i<20;i++){
+        const yy = (i/20)*H + (performance.now()%600)/2;
+        ctx.beginPath(); ctx.moveTo(left + 8, yy); ctx.lineTo(left + 8 + 140 + (i*8), yy - 46 - (i*2)); ctx.stroke();
       }
       ctx.restore();
     }
@@ -512,7 +746,7 @@ function drawRoad(){
   const topWInterp = lerp(topW, baseRoadWidth, pf);
   const horizonInterp = lerp(horizonY_default, H*0.5, pf);
 
-  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#071018'; ctx.fillRect(0,0,W,H);
 
   ctx.beginPath();
   ctx.moveTo(roadCenterX - topWInterp/2, horizonInterp);
@@ -564,7 +798,7 @@ function drawObstacles(){
   });
 }
 
-/* Dibujo del coche (interpolado) con nitro */
+/* Dibujo del coche */
 function drawPlayer(){
   const pf = transitionProgress;
   const sP = depthScale(player.y + player.baseH/2);
@@ -578,7 +812,7 @@ function drawPlayer(){
   const x = lerp(xP, xT, pf);
   const y = lerp(yP, yT, pf);
 
-  if(nitroActive){
+  if(nitroActive || eventPhase === 'escapeAnim'){
     ctx.save();
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = '#9fb8ff';
@@ -644,13 +878,11 @@ function drawPlayer(){
   drawWheelSimple(x + w*0.20, wheelYBack, wheelR*0.9, player.wheelRotation*0.9);
   drawWheelSimple(x + w*0.80, wheelYBack, wheelR*0.9, player.wheelRotation*0.9);
 
-  if(nitroActive){
+  if(nitroActive || eventPhase === 'escapeAnim'){
     const phase = performance.now() / 400;
     drawNitroEffect(x, y, w, h, phase);
   }
 }
-
-/* rueda simple */
 function drawWheelSimple(cx, cy, r, rot){
   ctx.save();
   ctx.translate(cx, cy);
@@ -664,8 +896,57 @@ function drawWheelSimple(cx, cy, r, rot){
   for(let i=0;i<6;i++){ ctx.beginPath(); ctx.moveTo(0,0); const a = (i/6) * Math.PI*2; ctx.lineTo(Math.cos(a)*r*0.5, Math.sin(a)*r*0.45); ctx.stroke(); }
   ctx.restore();
 }
+function drawNitroEffect(x,y,w,h,phase){
+  const flameW = w * 0.36, flameH = h * 0.6;
+  const fx = x + w*0.5 - flameW/2;
+  const fy = y + h*0.6;
+  const g = ctx.createLinearGradient(fx, fy, fx, fy + flameH);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.15, 'rgba(255,220,120,0.95)');
+  g.addColorStop(0.35, 'rgba(255,120,40,0.9)');
+  g.addColorStop(1, 'rgba(200,40,200,0.06)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  const jitter = Math.sin(phase*8) * 6;
+  ctx.ellipse(fx + flameW/2 + jitter*0.2, fy + flameH/2, flameW * (1 + Math.abs(Math.sin(phase*6))*0.25), flameH * (0.9 + Math.abs(Math.cos(phase*5))*0.25), 0, 0, Math.PI*2);
+  ctx.fill();
+  for(let i=0;i<3;i++){
+    ctx.globalAlpha = 0.12 * (1 - i*0.25);
+    ctx.fillStyle = i===0 ? 'rgba(255,120,40,0.9)' : (i===1 ? 'rgba(255,60,160,0.12)' : 'rgba(60,140,255,0.08)');
+    ctx.beginPath();
+    ctx.ellipse(fx + flameW/2 + (i-1)*18 + Math.sin(phase*6+i)*6, fy + flameH*0.6 + i*12, flameW * (1.6 + i*0.6), flameH * (0.6 + i*0.6), 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
 
-/* dibujar policía top-down con efecto de luces */
+/* UI del evento */
+function drawEventUI(){
+  if(!eventActive) return;
+  ctx.save();
+  if(eventPhase === 'countdown'){
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, H*0.35, W, H*0.3);
+    ctx.fillStyle = '#fff'; ctx.font = '120px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(countdownValue), W/2, H/2);
+  }
+  if(eventPhase === 'announce'){
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, H*0.35, W, H*0.3);
+  }
+  if(eventPhase === 'bar'){
+    const barW = W * 0.6, barH = 28;
+    const bx = (W - barW)/2, by = 40;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; roundRect(ctx, bx-4, by-4, barW+8, barH+8, 8); ctx.fill();
+    ctx.fillStyle = '#0aef6a'; roundRect(ctx, bx, by, barW * (barProgress/barMax), barH, 6); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; roundRect(ctx, bx, by, barW, barH, 6); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`Pulsa ESPACIO intensamente para rellenar la barra (${requiredPressesCurrent} pulsaciones)`, W/2, by + barH + 22);
+    drawPolice();
+  }
+  ctx.restore();
+}
+
+/* dibujar policía */
 function drawPolice(){
   if(!police) return;
   ctx.save();
@@ -705,31 +986,6 @@ function drawPolice(){
   ctx.restore();
 }
 
-/* UI del evento */
-function drawEventUI(){
-  if(!eventActive) return;
-  ctx.save();
-  if(eventPhase === 'countdown'){
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, H*0.35, W, H*0.3);
-    ctx.fillStyle = '#fff'; ctx.font = '120px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(countdownValue), W/2, H/2);
-  }
-  if(eventPhase === 'announce'){
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, H*0.35, W, H*0.3);
-  }
-  if(eventPhase === 'bar'){
-    const barW = W * 0.6, barH = 28;
-    const bx = (W - barW)/2, by = 40;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)'; roundRect(ctx, bx-4, by-4, barW+8, barH+8, 8); ctx.fill();
-    ctx.fillStyle = '#0aef6a'; roundRect(ctx, bx, by, barW * (barProgress/barMax), barH, 6); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; roundRect(ctx, bx, by, barW, barH, 6); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Pulsa ESPACIO intensamente para rellenar la barra (150 pulsaciones)', W/2, by + barH + 22);
-    drawPolice();
-  }
-  ctx.restore();
-}
-
 /* ====== Panel y utilidades ====== */
 function showPanel(title, text){ panelTitle.textContent = title; panelText.textContent = text; overlay.style.display = 'flex'; overlay.style.pointerEvents = 'auto'; }
 function hidePanel(){ overlay.style.display = 'none'; overlay.style.pointerEvents = 'none'; }
@@ -753,9 +1009,16 @@ function loop(now){
   drawObstacles();
   drawParticles();
   drawPlayer();
+  drawBullets(); // no-op
+  drawHearts();
+  if(impactFlashAlpha > 0){
+    ctx.save();
+    ctx.globalAlpha = impactFlashAlpha;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
   if(eventActive) drawEventUI();
-  ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`Puntuación: ${score}`, 14, 26); ctx.fillText(`Vidas: ${lives}`, 14, 48);
   requestAnimationFrame(loop);
 }
 
@@ -785,24 +1048,39 @@ panelRestart.onclick = resetGame;
 function resetGame(){
   obstacles = []; spawnTimer = 0; spawnInterval = 60;
   score = 0; lives = 3; startTime = Date.now();
-  scoreEl.textContent = score; livesEl.textContent = lives;
-  player.lane = 1; player.x = laneXAt(1, player.y, player.baseW);
-  eventActive = false; eventPhase = null; police = null; nextTriggerScore = 100;
+  renderScore(); renderLives();
+  player.lane = 1; player.y = player.initY; player.x = laneXAt(player.lane, player.initY, player.baseW);
+  player.targetX = player.x; player.tilt = 0; player.wheelRotation = 0;
+  eventActive = false; eventPhase = null; police = null;
   transitionProgress = 0; transitionTarget = 0; horizonY = horizonY_default;
   pressTimestamps = [];
   pressCounterEl.style.display = 'none';
   pressRateEl.style.display = 'none';
   announceEl.style.display = 'none';
+  escapeEl.style.display = 'none';
   eventBoostRemaining = 0;
   particles = [];
+  bullets = [];
+  muzzleFlashesArr = [];
+  hearts = [];
+  impactFlashAlpha = 0;
   setNitro(false);
   screenShake = 0;
+  eventCount = 0;
+  requiredPressesCurrent = requiredPressesBase;
+  barPressIncrement = 1 / requiredPressesCurrent;
+  nextTriggerScore = 200;
+  triggerStepIndex = 0;
+  postEscapeSpawnBlock = false;
+  postEscapeBlockTimer = 0;
+  heartPending = false;
+  heartPendingTimer = 0;
   running = true; paused = false; hidePanel(); loop();
 }
 
 /* iniciar */
 player.x = laneXAt(player.lane, player.y, player.baseW);
-scoreEl.textContent = score; livesEl.textContent = lives;
+renderScore(); renderLives();
 loop();
 
 /* helper rounded rect */
